@@ -1,10 +1,13 @@
 // ==UserScript==
 // @name           bro3_timer
-// @version        1.37
+// @version        1.39
 // @namespace      http://blog.livedoor.jp/froo/
 // @include        http://*.3gokushi.jp/*
 // @include        http://*.1kibaku.jp/*
 // @include        http://*.landsandlegends.com/*
+// @include        http://*.lordsofdynasty.com/*
+// @include        http://*.browserkingdom.com/*
+// @include        http://qcsgtwg*.17pk.com.tw/*
 // @description    ブラウザ三国志タイマー by 浮浪プログラマ
 // ==/UserScript==
 
@@ -13,9 +16,11 @@
 //         作業完了時刻が来たら通知（alert/popup）
 //         各ページ右下「タイマー」リンクで登録情報確認
 
-var VERSION = "1.37";
+var VERSION = "1.39";
 var DIST_URL = "http://blog.livedoor.jp/froo/archives/51423697.html";
 var LOCAL_STORAGE = "bro3_timer";
+
+var debug_log = function(msg) { console.log('bro3Timer:' + location.host + ':' + msg); };
 
 var DELIMIT1 = "#$%";
 var DELIMIT2 = "&?@";
@@ -58,9 +63,11 @@ var ALERT_TIME;
 
 //main
 (function(){
+  debug_log("Main:attachEvent");
+  attachEvent();
 
 	//mixi鯖障害回避用: 広告iframe内で呼び出されたら無視
-	if (!document.getElementById("container")) { return; }
+	if (!document.getElementById("container") && location.hostname.indexOf("www.") != 0) return;
 
 	initGMWrapper();
 	setHost();
@@ -94,6 +101,25 @@ var ALERT_TIME;
 		updateTimer();
 	}, 0);
 })();
+
+
+// Attach Event
+function attachEvent() {
+  document.addEventListener("GMBro3TimerListner", function (request) {
+    debug_log('GMBro3TimerListner:Rcv:request = ' + request.command);
+
+    var response = document.createEvent("DataContainerEvent");
+    response.initEvent("GMBro3TimerResponse", true, false);
+    response.setData("reply", request.command);
+    if (request.command === 'loadVillages') {
+      response.setData("return", JSON.stringify(loadVillages(location.hostname)));
+    } else {
+      response.setData("return", 'You said "' + request.command + '"');
+    }
+    debug_log('GMBro3TimerResponse:Send:response = ' + response.getData('reply'));
+    document.dispatchEvent(response);
+  }, false);
+}
 
 //サーバ登録
 function setHost() {
@@ -238,7 +264,8 @@ function getUserProf() {
 		var item = landElems.snapshotItem(i);
 
 		if (!isLandList) {
-			if (trim(getChildElement(item, 0).innerHTML) == "名前" || trim(getChildElement(item, 0).innerHTML) == "Name") {
+			var firstElem = getChildElement(item, 0);
+			if (firstElem && (trim(firstElem.innerHTML) === "名前" || trim(firstElem.innerHTML) == "Name" || trim(firstElem.innerHTML) == "Nom" || trim(firstElem.innerHTML) == "名稱")) {
 				isLandList = true;
 			}
 			continue;
@@ -1487,6 +1514,7 @@ function initGMWrapper() {
 		}
 
 		GM_log = function(message) {
+		  // Firefox about:config set extensions.firebug.showChromeErrors
 			console.log(message);
 		}
 
