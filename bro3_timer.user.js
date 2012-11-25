@@ -1,16 +1,19 @@
 // ==UserScript==
 // @name          bro3_timer
-// @version       1.40.20120530
+// @version       1.40.20121126
 // @namespace     http://blog.livedoor.jp/froo/
 // @include       http://*.3gokushi.jp/*
 // @include       http://*.1kibaku.jp/*
 // @include       http://s*.bbsr-maql.jp/*
 // @include       http://y*.bbsr-maql.jp/*
+// @include       http://top.bbsr-maql.jp/*
 // @include       http://*.browserkingdom.com/*
 // @include       http://qcsgtwg*.17pk.com.tw/*
 // @include       http://w*.sangokushi.in.th/*
 // @include       http://*.app0.mixi-platform.com/gadgets/ifr?*&app_id=6598&*
-// @include       http://*.app.mbga-platform.jp/gadgets/ifr*3gokushi.jp*
+// @include       http://*.app.mbga-platform.jp/gadgets/ifr*.3gokushi.jp*
+// @include       http://*.app.mbga-platform.jp/gadgets/ifr*.bbsr-maql.jp*
+// @require       http://ajax.googleapis.com/ajax/libs/jquery/1.8.3/jquery.min.js
 // @description   ブラウザ三国志タイマー by 浮浪プログラマ
 // ==/UserScript==
 
@@ -22,6 +25,10 @@
 var VERSION = "1.40.20120530";
 var DIST_URL = "http://blog.livedoor.jp/froo/archives/51423697.html";
 var LOCAL_STORAGE = "bro3_timer";
+HOST = location.hostname;
+
+jQuery.noConflict();
+j$ = jQuery;
 
 var LogInURL = [
 	[/^qcsgtwg\d+\.17pk\.com\.tw/, 'http://login.17pk.com.tw/login.do?rp=qcsg'],
@@ -31,7 +38,8 @@ var LogInURL = [
 	[/^y\d+\.bbsr-maql\.jp/, 'http://yahoo-mbga.jp/game/12010565/play'],
 ];
 
-var debug_log = function(msg) { console.log('bro3Timer:' + location.host.split('.')[0] + ':' + msg); };
+//var debug_log = function(msg) { console.log(GM_info.script.name + ':' + location.host.split('.')[0] + ':' + msg); };
+var debug_log = function(msg) { console.log(GM_info.script.name + ':' + location.host + ':' + msg); };
 
 var DELIMIT1 = "#$%";
 var DELIMIT2 = "&?@";
@@ -77,9 +85,72 @@ var ALERT_TIME;
 try{
 	debug_log('Start.')
 
-	if (location.hostname.indexOf('app0.mixi-platform.com') > 0) {
+	var getLatestServerProfile = function(){
+		// サーバ選択画面の場合 serverLatest情報取得
+		with({serverprof:{}}){
+			debug_log("SERVER LIST");
+			with({href:"", param:{}, parry:[], pair:[], i:0}){
+				href = j$('div#serverLatest').parent().attr('href');
+				if(href == '#' || href == ''){
+					href = j$('div#serverLatest').parent().attr('onclick');
+					parry = href.split('http://', 2)[1].split('.', 1);
+					serverprof['world'] = parry[0];
+				} else {
+					parry = decodeURI(href).split('?', 2)[1].split('&');
+					for(i = 0; i < parry.length; i++){
+						pair = parry[i].split('=', 2);
+						param[pair[0]] = pair[1];
+					}
+					serverprof['world'] = param['wd'];
+				}
+			};
+			serverprof['title'] = j$('div#serverLatest').parent().attr('title');
+			serverprof['ver'] = j$('div#serverLatest p.name span').text().trim();
+			serverprof['since'] = j$('div#serverLatest p.date').text().trim();
+			with ({result:[]}) {
+				j$('div#serverLatest p.name img').each(function(){
+					result.push(j$(this).attr('alt'));
+				});
+				serverprof['group'] = result.join('');
+			};
+			serverprof['status'] = j$('div#serverLatest div.right p').text();
+
+			debug_log(JSON.stringify(serverprof));
+		};
+	};
+
+	if(j$('div.choiseServer').length != 0) {
+		getLatestServerProfile();
+		return;
+	}
+
+	if(j$("div#canvas_view").length != 0){
+		debug_log("canvas_view hooked");
+		j$("div#canvas_view").load(function(){
+			debug_log("canvas_view CHANGED");
+		});
+//		j$("div#canvas_view").bind('DOMSubtreeModified',function(){
+//			debug_log("canvas_view CHANGED");
+//		}
+//		);
+
+		var config = { attributes: true, childList: true, characterData: true, subtree: true }
+		var target = document.querySelector('div#canvas_view');
+		var observer = new MutationObserver(function(mutations) {
+			mutations.forEach(function(mutation) {
+				debug_log(mutation.type);
+//				for(var i=0; i< mutation.addedNodes.length;i++) {
+//					debug_log(mutation.addedNodes.item(i).innerHTML);
+//				}
+				getLatestServerProfile();
+			});
+		});
+		observer.observe(target, config);
+	}
+
+	if (location.hostname.indexOf('.mixi-platform.com') > 0 || location.hostname.indexOf('.mbga-platform.jp') > 0) {
 		debug_log('location.href=' + location.href);
-		debug_log('location.hash=' + location.hash);
+//		debug_log('location.hash=' + location.hash);
 	}
 
 	// <html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head><body>ただいまサーバが混み合っております。しばらく時間を置いてからアクセスして頂きますようお願い申し上げます。</body></html>
