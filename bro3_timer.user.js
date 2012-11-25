@@ -1,14 +1,17 @@
 // ==UserScript==
-// @name           bro3_timer
-// @version        1.39
-// @namespace      http://blog.livedoor.jp/froo/
-// @include        http://*.3gokushi.jp/*
-// @include        http://*.1kibaku.jp/*
-// @include        http://*.landsandlegends.com/*
-// @include        http://*.lordsofdynasty.com/*
-// @include        http://*.browserkingdom.com/*
-// @include        http://qcsgtwg*.17pk.com.tw/*
-// @description    ブラウザ三国志タイマー by 浮浪プログラマ
+// @name          bro3_timer
+// @version       1.40.20120530
+// @namespace     http://blog.livedoor.jp/froo/
+// @include       http://*.3gokushi.jp/*
+// @include       http://*.1kibaku.jp/*
+// @include       http://s*.bbsr-maql.jp/*
+// @include       http://y*.bbsr-maql.jp/*
+// @include       http://*.browserkingdom.com/*
+// @include       http://qcsgtwg*.17pk.com.tw/*
+// @include       http://w*.sangokushi.in.th/*
+// @include       http://*.app0.mixi-platform.com/gadgets/ifr?*&app_id=6598&*
+// @include       http://*.app.mbga-platform.jp/gadgets/ifr*3gokushi.jp*
+// @description   ブラウザ三国志タイマー by 浮浪プログラマ
 // ==/UserScript==
 
 // 公開ページ:http://blog.livedoor.jp/froo/archives/51423697.html
@@ -16,11 +19,19 @@
 //         作業完了時刻が来たら通知（alert/popup）
 //         各ページ右下「タイマー」リンクで登録情報確認
 
-var VERSION = "1.39";
+var VERSION = "1.40.20120530";
 var DIST_URL = "http://blog.livedoor.jp/froo/archives/51423697.html";
 var LOCAL_STORAGE = "bro3_timer";
 
-var debug_log = function(msg) { console.log('bro3Timer:' + location.host + ':' + msg); };
+var LogInURL = [
+	[/^qcsgtwg\d+\.17pk\.com\.tw/, 'http://login.17pk.com.tw/login.do?rp=qcsg'],
+	[/^f\d+\.browserkingdom\.com/, 'http://www.friendster.com/play/browserkingdom'],
+	[/^w\d+\.sangokushi\.in\.th/, 'http://www2.enmo.in.th/game/home/sangokushi'],
+	[/^y\d+\.3gokushi\.jp/, 'http://yahoo-mbga.jp/game/12002943/play'],
+	[/^y\d+\.bbsr-maql\.jp/, 'http://yahoo-mbga.jp/game/12010565/play'],
+];
+
+var debug_log = function(msg) { console.log('bro3Timer:' + location.host.split('.')[0] + ':' + msg); };
 
 var DELIMIT1 = "#$%";
 var DELIMIT2 = "&?@";
@@ -63,12 +74,71 @@ var ALERT_TIME;
 
 //main
 (function(){
-  debug_log("Main:attachEvent");
-  attachEvent();
+try{
+	debug_log('Start.')
+
+	if (location.hostname.indexOf('app0.mixi-platform.com') > 0) {
+		debug_log('location.href=' + location.href);
+		debug_log('location.hash=' + location.hash);
+	}
+
+	// <html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head><body>ただいまサーバが混み合っております。しばらく時間を置いてからアクセスして頂きますようお願い申し上げます。</body></html>
+
+	// セッションタイムアウトならログイン画面へ直行、メンテナンス中ならしばらく待機してログイン画面へ
+	if (self.location.pathname === '/false/login_sessionout.php'
+	|| self.location.pathname === '/maintenance/'
+	|| self.location.pathname === '/user/first_login.php'
+	|| self.location.pathname+self.location.search === '/index.php?sessionerror=1') {
+		var nextURL = '';
+
+		var aaa = document.evaluate('//*[@class="back" or @class="back4" or @class="big"]/a', document, null, XPathResult.UNORDERED_NODE_SNAPSHOT_TYPE, null);
+		if (aaa.snapshotLength !== 0) {
+			nextURL = aaa.snapshotItem(0).href;
+		}
+
+		LogInURL.forEach( function(item){
+			if (item[0].test(location.host)) {
+				debug_log('location.host=' + location.host + 'targetURL=' + item[1]);
+				nextURL = item[1];
+			}
+		});
+
+		if (nextURL != '') {
+			var idlesec = 5;
+			if (location.pathname === '/maintenance/') {
+				idlesec = 600;
+			}
+
+			setTimeout(function() {
+				if (top.location.href === nextURL) {
+					location.reload();
+				}
+				nextURL += '#' + location.hostname;
+				debug_log('top = ' + unsafeWindow.top.location.href);
+				debug_log('Jump to ' + nextURL);
+
+				top.location.assign(nextURL);
+			}, idlesec * 1000);
+			return;
+		}
+		debug_log('No back page.');
+	}
+
+	// フレームから自動で抜ける
+	if (top !== self) {
+		var logo = document.getElementsByClassName('siteID');
+		if (logo.length > 0 && logo.item(0).innerHTML.match("/ttl_id\.(?:gif|png)").length > 0) {
+			setTimeout(function() {
+				top.location.replace(self.location.href);
+				return;
+			}, 3 * 1000);
+		}
+	}
 
 	//mixi鯖障害回避用: 広告iframe内で呼び出されたら無視
 	if (!document.getElementById("container") && location.hostname.indexOf("www.") != 0) return;
 
+	attachEvent();
 	initGMWrapper();
 	setHost();
 
@@ -97,9 +167,12 @@ var ALERT_TIME;
 	addOpenLinkHtml();
 
 	//アラート登録
-	window.setTimeout(function() {
+	setTimeout(function() {
 		updateTimer();
 	}, 0);
+} catch(e) {
+	debug_log(e);
+}
 })();
 
 
@@ -148,37 +221,36 @@ function getVillageActions() {
 	data[IDX_XY] = trim(xyElem.snapshotItem(0).innerHTML);
 
 	//建設情報を取得
-	var actionsElem = document.evaluate('//*[@id="actionLog"]/ul/li',
-		document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+	var actionsElem = document.evaluate('//*[@id="actionLog"]/ul/li', document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
 	var actions1 = new Array();
 	for (var i = 0; i < actionsElem.snapshotLength; i++) {
 		var paItem = actionsElem.snapshotItem(i);
 		var newAction = new Array();
 		newAction[IDX2_TYPE] = TYPE_CONSTRUCTION;
+		debug_log(paItem.innerHTML);
 
 		//ステータス
-		var buildStatusElem = document.evaluate('./span[@class="buildStatus"]/a',
-			paItem, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+		var buildStatusSpan = document.evaluate('./*[@class="buildStatus"]', paItem, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+		debug_log(buildStatusSpan.innerHTML);
+		var buildStatusElem = document.evaluate('./span[@class="buildStatus"]/a', paItem, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+		debug_log(buildStatusElem.innerHTML);
 		var buildStatus;
 		if (buildStatusElem.snapshotLength > 0) {
 			//施設建設
 			buildStatus = "建設:" + trim(buildStatusElem.snapshotItem(0).innerHTML);
 		} else {
 			//研究
-//			buildStatusElem = document.evaluate('./span[@class="buildStatus"]',
-//				paItem, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+//			buildStatusElem = document.evaluate('./span[@class="buildStatus"]', paItem, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
 //			buildStatus = buildStatusElem.snapshotItem(0).innerHTML;
 			continue;
 		}
 		newAction[IDX2_STATUS] = buildStatus;
 
-//		var buildTimeElem = document.evaluate('./span[@class="buildTime"]',
-//			paItem, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+//		var buildTimeElem = document.evaluate('./span[@class="buildTime"]', paItem, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
 //		newAction[IDX2_STATUS] += buildTimeElem.snapshotItem(0).innerHTML;
 
 		//施設建設完了時刻
-		var buildClockElem = document.evaluate('./span[@class="buildClock"]',
-			paItem, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+		var buildClockElem = document.evaluate('./span[@class="buildClock"]', paItem, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
 		var clock = buildClockElem.snapshotItem(0).innerHTML;
 		newAction[IDX2_TIME] = generateDateString(computeTime(clock));
 
@@ -265,7 +337,7 @@ function getUserProf() {
 
 		if (!isLandList) {
 			var firstElem = getChildElement(item, 0);
-			if (firstElem && (trim(firstElem.innerHTML) === "名前" || trim(firstElem.innerHTML) == "Name" || trim(firstElem.innerHTML) == "Nom" || trim(firstElem.innerHTML) == "名稱")) {
+			if (firstElem && (trim(firstElem.innerHTML) === "名前" || trim(firstElem.innerHTML) == "Name" || trim(firstElem.innerHTML) == "Nom" || trim(firstElem.innerHTML) == "名稱" || trim(firstElem.innerHTML) ==  "ชื่อ")) {
 				isLandList = true;
 			}
 			continue;
@@ -277,7 +349,8 @@ function getUserProf() {
 		var url = nameElem.href;
 
 		//座標項目を取得
-		var xy = "(" + getChildElement(item, 1).innerHTML + ")";
+		//var xy = "(" + getChildElement(item, 1).innerHTML + ")";
+		var xy = "(" + getChildElement(item, 1).innerHTML.match(/-?[0-9]+\,-?[0-9]+/i) + ")";
 
 		//人口項目を取得
 		var popul = getChildElement(item, 2).innerHTML;
@@ -378,11 +451,9 @@ function addOpenLinkHtml() {
 	var container;
 	var isMixi;
 
-	var sidebar = document.evaluate('//*[@id="sidebar"]',
-		document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+	var sidebar = document.evaluate('//*[@id="sidebar"]', document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
 	if (sidebar.snapshotLength == 0) {
-		sidebar = document.evaluate('//*[@id="bptpcp_area"]',
-			document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+		sidebar = document.evaluate('//*[@id="bptpcp_area"]', document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
 		if (sidebar.snapshotLength > 0) {
 			isMixi = true;
 		}
@@ -449,7 +520,7 @@ function addTimerHtml() {
 	timerContainer.style.top = popupTop + "px";
 	timerContainer.style.fontSize = "10px";
 	timerContainer.style.padding = "3px";
-	timerContainer.style.zIndex = 999;
+	timerContainer.style.zIndex = 99999;
 	timerContainer.style.textAlign = "left";
 //	timerContainer.style.opacity = 0.8;
 	document.body.appendChild(timerContainer);
@@ -896,7 +967,7 @@ function setNoticeWait() {
 //console.log("waitTime="+waitTime);
 
 	//完了時刻まで待つ
-	window.setTimeout(function() {
+	setTimeout(function() {
 		ALERT_TIME = undefined;
 		updateTimer();
 	}, waitTime);
@@ -1040,7 +1111,7 @@ function loadVillages(hostname) {
 	var villages = src.split(DELIMIT1);
 	for (var i = 0; i < villages.length; i++) {
 		var fields = villages[i].split(DELIMIT2);
-
+		if (fields[IDX_XY] == '') continue;
 		ret[i] = new Array();
 		ret[i][IDX_XY] = fields[IDX_XY];
 		ret[i][IDX_BASE_NAME] = fields[IDX_BASE_NAME];
@@ -1192,6 +1263,7 @@ function getMyXY() {
 	};
 
 	var nowLoc = $x('id("gnavi")//a[contains(@href,"map.php")]');
+	if (!nowLoc) nowLoc = $x('id("gNav")//a[contains(@href,"map.php")]');
 	if (!nowLoc) return null;
 
 	var xy = nowLoc.href.match(/x=([\-0-9]+)&y=([\-0-9]+)/i);
@@ -1239,7 +1311,7 @@ function addSetupHtml() {
 	container.style.top = popupTop + "px";
 //	container.style.fontSize = "10px";
 	container.style.padding = "3px";
-	container.style.zIndex = 999;
+	container.style.zIndex = 99999;
 	container.style.textAlign = "left";
 	document.body.appendChild(container);
 
